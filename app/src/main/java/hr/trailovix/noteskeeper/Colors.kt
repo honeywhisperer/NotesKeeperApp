@@ -7,5 +7,5 @@ enum class Colors(val value: Int) {
     GREEN(0x5500AA00),
     BLUE(0x550000AA),
     INDIGO(0x55550099),
-    TRANSPARENT(0x00000000) // todo: update this value
+    TRANSPARENT(0x00000000)
 }

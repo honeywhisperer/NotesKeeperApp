@@ -1,14 +1,18 @@
 package hr.trailovix.noteskeeper
 
-import android.graphics.Color
-import androidx.appcompat.app.AppCompatActivity
+import android.content.ContentValues
+import android.database.Cursor
 import android.os.Bundle
-import android.view.LayoutInflater
+import android.view.View
 import android.widget.Toast
+import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import hr.trailovix.noteskeeper.database.DbContract
 import hr.trailovix.noteskeeper.databinding.ActivityMainBinding
 import hr.trailovix.noteskeeper.databinding.MenuTextBinding
+import java.lang.Exception
+import java.util.*
 
 class MainActivity : AppCompatActivity() {
 
@@ -17,6 +21,9 @@ class MainActivity : AppCompatActivity() {
 
     private var _menuTextBinding: MenuTextBinding? = null /*for edit task and add new task dialogs*/
     private val menuTextBinding get() = _menuTextBinding!!
+
+    private val tasksRV = mutableListOf<Task>() //data to be shown in RecyclerView
+    private val _tasksDB = mutableListOf<Task>() //data taken from database, used for reference
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -66,51 +73,50 @@ class MainActivity : AppCompatActivity() {
         })
         binding.rvToDo.layoutManager = LinearLayoutManager(this)
         binding.rvToDo.adapter = taskAdapter
-        taskAdapter.setTasks(DummyDataHolder.tasks)
+
+        refreshData()
     }
 
     private fun addNewTask() {
         fun createTask(taskDescription: String, taskDetails: String) {
             val newTask = Task(taskDescription, taskDetails)
-            Toast.makeText(
-                this,
-                "$taskDescription : $taskDetails  ADD NEW TASK PLACEHOLDER",
-                Toast.LENGTH_SHORT
-            ).show()
-            //todo: create new task, add it to database + add it to RV + notify
+            insertTaskInDB(newTask)
+            refreshData()
         }
+
         taskTextShowDialog(Task(""), ::createTask, "Create New Task")
     }
 
     private fun editTask(task: Task) {
         fun updateTask(taskDescription: String, taskDetails: String) {
-            Toast.makeText(
-                this,
-                "$taskDescription : $taskDetails  EDIT TEXT PLACEHOLDER",
-                Toast.LENGTH_SHORT
-            ).show()
-            //todo: database update + RV update + notify
+            val newTask = task.copy(taskDescription = taskDescription, taskDetails = taskDetails)
+            updatedTaskInDB(newTask)
+            refreshData()
         }
+
         taskTextShowDialog(task, ::updateTask, "Updating Task Details")
     }
 
     private fun changeColor(task: Task) {
+        val newTask = task.copy()
         val options = arrayOf("Indigo", "Blue", "Green", "Yellow", "Orange", "Red", "Transparent")
         MaterialAlertDialogBuilder(this)
             .setTitle("Select Color")
             .setItems(options) { _, selection ->
                 when (selection) {
-                    0 -> task.color = Colors.INDIGO
-                    1 -> task.color = Colors.BLUE
-                    2 -> task.color = Colors.GREEN
-                    3 -> task.color = Colors.YELLOW
-                    4 -> task.color = Colors.ORANGE
-                    5 -> task.color = Colors.RED
-                    else -> task.color = Colors.TRANSPARENT
+                    0 -> newTask.color = Colors.INDIGO
+                    1 -> newTask.color = Colors.BLUE
+                    2 -> newTask.color = Colors.GREEN
+                    3 -> newTask.color = Colors.YELLOW
+                    4 -> newTask.color = Colors.ORANGE
+                    5 -> newTask.color = Colors.RED
+                    else -> newTask.color = Colors.TRANSPARENT
                 }
+                //database update + RV update + notify
+                updatedTaskInDB(newTask)
+                refreshData()
             }
             .show()
-        //todo: database update + RV update + notify
     }
 
     private fun taskTextShowDialog(
@@ -126,7 +132,7 @@ class MainActivity : AppCompatActivity() {
         MaterialAlertDialogBuilder(this)
             .setView(menuTextBinding.root)
             .setTitle(dialogTitle)
-            .setNegativeButton("Cancel", ){_1, _2->
+            .setNegativeButton("Cancel") { _1, _2 ->
                 _menuTextBinding = null
             }
             .setPositiveButton("Save") { _1, _2 ->
@@ -135,6 +141,7 @@ class MainActivity : AppCompatActivity() {
                 val newDetails = menuTextBinding.tilTaskDetails.editText?.text.toString().trim()
 
                 predicate(newDescription, newDetails)
+
                 _menuTextBinding = null
             }
             .show()
@@ -142,11 +149,86 @@ class MainActivity : AppCompatActivity() {
 
     private fun invertDoneFlag(task: Task) {
         val oldValue = task.isDone
-        task.isDone = oldValue.not()
-        //todo: database update + RV update + notify
+        val newTask = task.copy(isDone = oldValue.not())
+        updatedTaskInDB(newTask)
+        refreshData()
     }
 
     private fun removeTask(task: Task) {
-        //todo: database update + RV update + notify
+        MaterialAlertDialogBuilder(this)
+            .setTitle("Remove: ${task.taskDescription} ?")
+            .setNegativeButton("Cancel", null)
+            .setPositiveButton("Remove") { _1, _2 ->
+                removeTaskFromDB(task)
+                refreshData()
+            }
+            .show()
+    }
+
+    private fun getTaskFromCursor(cursor: Cursor): Task {
+        cursor.let {
+            val taskDescription =
+                it.getString(it.getColumnIndex(DbContract.Columns.TASK_DESCRIPTION))
+            val taskDetails = it.getString(it.getColumnIndex(DbContract.Columns.TASK_DETAILS))
+            val taskColor = Colors.values()
+                .first { appColors ->
+                    appColors.value == cursor.getInt(cursor.getColumnIndex(DbContract.Columns.TASK_COLOR))
+                }
+            val taskIsDone = it.getInt(it.getColumnIndex(DbContract.Columns.TASK_DONE)) != 0
+            val taskUuid =
+                UUID.fromString(it.getString(it.getColumnIndex(DbContract.Columns.TASK_UUID)))
+
+            return Task(taskDescription, taskDetails, taskColor, taskIsDone, taskUuid)
+
+        }
+    }
+
+    private fun getContentValues(task: Task): ContentValues {
+        return ContentValues().apply {
+            put(DbContract.Columns.TASK_DESCRIPTION, task.taskDescription)
+            put(DbContract.Columns.TASK_DETAILS, task.taskDetails)
+            put(DbContract.Columns.TASK_COLOR, task.color.value)
+            put(DbContract.Columns.TASK_DONE, task.isDone)
+            put(DbContract.Columns.TASK_UUID, task.uuid.toString())
+        }
+    }
+
+    /**
+     * read data from the DB and store it in _taskDB; compare with RV, update RV and notify RV
+     */
+    private fun refreshData() {
+        val cursor = contentResolver.query(DbContract.CONTENT_URI, null, null, null, null)
+        _tasksDB.clear()
+        try {
+            cursor?.let {
+                it.moveToFirst()
+                _tasksDB.add(getTaskFromCursor(it))
+                while (it.moveToNext()) {
+                    _tasksDB.add(getTaskFromCursor(it))
+                }
+            }
+            taskAdapter.updateTasksList(_tasksDB)
+            cursor?.close()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    private fun updatedTaskInDB(task: Task) {
+        val contentValues = getContentValues(task)
+        val selection = DbContract.Columns.TASK_UUID + " = ?"
+        val arg = arrayOf(task.uuid.toString())
+        contentResolver.update(DbContract.CONTENT_URI, contentValues, selection, arg)
+    }
+
+    private fun insertTaskInDB(task: Task) {
+        val contentValues = getContentValues(task)
+        contentResolver.insert(DbContract.CONTENT_URI, contentValues)
+    }
+
+    private fun removeTaskFromDB(task: Task) {
+        val selection = DbContract.Columns.TASK_UUID + " = ?"
+        val arg = arrayOf(task.uuid.toString())
+        contentResolver.delete(DbContract.CONTENT_URI, selection, arg)
     }
 }

@@ -5,6 +5,8 @@ import android.graphics.Paint
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import androidx.core.graphics.alpha
+import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.RecyclerView
 import hr.trailovix.noteskeeper.databinding.ItemTaskBinding
 
@@ -12,38 +14,15 @@ class TaskAdapter(private val listener: OnTaskItemInteraction) :
     RecyclerView.Adapter<TaskAdapter.TaskViewHolder>() {
 
     private val listRV = mutableListOf<Task>() //data to be shown in RecyclerView
-    private val _listDB = mutableListOf<Task>() //data taken from database, used for reference
 
-    fun setTasks(taskList: List<Task>) {
+    fun updateTasksList(updatedList: List<Task>) {
+        val diffCallback = TasksDiffCallback(listRV, updatedList)
+        val diffResult = DiffUtil.calculateDiff(diffCallback)
+
         listRV.clear()
-        listRV.addAll(taskList)
-        notifyDataSetChanged()
+        listRV.addAll(updatedList)
+        diffResult.dispatchUpdatesTo(this)
     }
-
-//    fun changeColor(element: String, color: Int) {
-//        val index = ToDo.changeColor(element, color)
-//        notifyItemChanged(index)
-//    }
-//
-//    fun updateText(oldText: String, newText: String) {
-//        val index = ToDo.changeText(oldText, newText)
-//        notifyItemChanged(index)
-//    }
-//
-//    fun addNew(task: String) {
-//        val index = ToDo.addNewTask(task)
-//        notifyItemInserted(index)
-//    }
-//
-//    fun changeDone(text: String, isDone: Boolean) {
-//        val index = ToDo.changeIsDone(text, isDone)
-//        notifyItemChanged(index)
-//    }
-//
-//    fun removeElement(text: String) {
-//        val index = ToDo.removeTask(text)
-//        notifyItemRemoved(index)
-//    }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): TaskViewHolder {
         val binding = ItemTaskBinding.inflate(LayoutInflater.from(parent.context), parent, false)
@@ -75,17 +54,18 @@ class TaskAdapter(private val listener: OnTaskItemInteraction) :
 
         fun bind(task: Task) {
             itemTaskBinding.tvTaskDescription.text = task.taskDescription
-            itemTaskBinding.cardView.setCardBackgroundColor(ColorStateList.valueOf(task.color.value))
             if (task.isDone) {
                 itemTaskBinding.ivDone.setImageResource(R.drawable.ic_done)
                 val paintFlagsPrevious = itemTaskBinding.tvTaskDescription.paintFlags
                 itemTaskBinding.tvTaskDescription.paintFlags =
                     paintFlagsPrevious or Paint.STRIKE_THRU_TEXT_FLAG
+                itemTaskBinding.cardView.setCardBackgroundColor(ColorStateList.valueOf(task.color.value or 0x77000000))
             } else {
                 itemTaskBinding.ivDone.setImageResource(R.drawable.ic_undone)
                 val paintFlagsPrevious = itemTaskBinding.tvTaskDescription.paintFlags
                 itemTaskBinding.tvTaskDescription.paintFlags =
                     paintFlagsPrevious and Paint.STRIKE_THRU_TEXT_FLAG.inv()
+                itemTaskBinding.cardView.setCardBackgroundColor(ColorStateList.valueOf(task.color.value))
             }
             if (task.taskDetails.isNotBlank()) {
                 itemTaskBinding.tvTaskDetails.visibility = View.VISIBLE
