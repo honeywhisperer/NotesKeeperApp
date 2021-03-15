@@ -3,9 +3,11 @@ package hr.trailovix.noteskeeper
 import android.content.ContentValues
 import android.database.Cursor
 import android.os.Bundle
-import android.view.View
+import android.view.Menu
+import android.view.MenuItem
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.widget.SearchView
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import hr.trailovix.noteskeeper.database.DbContract
@@ -22,7 +24,10 @@ class MainActivity : AppCompatActivity() {
     private var _menuTextBinding: MenuTextBinding? = null /*for edit task and add new task dialogs*/
     private val menuTextBinding get() = _menuTextBinding!!
 
-    private val tasksRV = mutableListOf<Task>() //data to be shown in RecyclerView
+    private lateinit var searchView: SearchView
+
+    private val _tasksSearched =
+        mutableListOf<Task>() //data to be shown in RecyclerView as Search result
     private val _tasksDB = mutableListOf<Task>() //data taken from database, used for reference
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -31,13 +36,115 @@ class MainActivity : AppCompatActivity() {
         setContentView(binding.root)
 
         setupTasksRV()
-        setListeners()
+        setupToolbar()
     }
 
-    private fun setListeners() {
-        binding.fabAddNew.setOnClickListener {
-            addNewTask()
+    override fun onCreateOptionsMenu(menu: Menu?): Boolean {
+        menuInflater.inflate(R.menu.main_menu, menu)
+        val searchItem = menu?.findItem(R.id.action_search)
+        searchView = searchItem?.actionView as SearchView
+        setupSearch()
+        return super.onCreateOptionsMenu(menu)
+    }
+
+    private fun setupToolbar() {
+        setSupportActionBar(binding.toolbar)
+    }
+
+    override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        return when (item.itemId) {
+            R.id.action_addNew -> {
+                addNewTask()
+                true
+            }
+            R.id.action_allDone -> {
+                taskAdapter.getVisibleElements().forEach { task ->
+                    task.isDone = true
+                    task.lastEdit = Date().time
+                    updatedTaskInDB(task)
+                }
+                refreshData()
+                taskAdapter.notifyDataSetChanged()/*NECESSARY*/
+                true
+            }
+            R.id.action_allUndone -> {
+                taskAdapter.getVisibleElements().forEach { task ->
+                    task.isDone = false
+                    task.lastEdit = Date().time
+                    updatedTaskInDB(task)
+                }
+                refreshData()
+                taskAdapter.notifyDataSetChanged()
+                true
+            }
+            R.id.action_RemoveAll -> {
+                MaterialAlertDialogBuilder(this)
+                    .setTitle("Remove All Tasks?")
+                    .setMessage("All here presented tasks will be permanently removed")
+                    .setNegativeButton("Cancel", null)
+                    .setPositiveButton("Remove") { _1, _2 ->
+                        taskAdapter.getVisibleElements().forEach { task ->
+                            removeTaskFromDB(task)
+                        }
+                        refreshData()
+                        taskAdapter.notifyDataSetChanged()
+                    }
+                    .show()
+                true
+            }
+            R.id.action_info -> {
+                showAppInfo()
+                true
+            }
+            else -> super.onOptionsItemSelected(item)
         }
+    }
+
+    private fun showAppInfo() {
+        Toast.makeText(this, "${_tasksSearched.size}", Toast.LENGTH_SHORT).show()
+        MaterialAlertDialogBuilder(this)
+            .setTitle("Notes Keeper")
+            .setMessage("Group actions (Remove All, Mark All as Done or Undone) are applied to the result of the last search.")
+            .setPositiveButton("Ok") { _1, _2 ->
+                refreshData()
+                taskAdapter.notifyDataSetChanged()
+            }
+            .show()
+
+    }
+
+    private fun setupSearch() {
+        searchView.setOnQueryTextListener(object : SearchView.OnQueryTextListener {
+            override fun onQueryTextSubmit(query: String?): Boolean {
+//                _tasksRV.clear()
+//                refreshData()
+                return true
+            }
+
+            override fun onQueryTextChange(newText: String?): Boolean {
+//                refreshData()
+                if (newText.isNullOrBlank()) {
+                    _tasksSearched.clear()
+                    _tasksSearched.addAll(_tasksDB)
+                    taskAdapter.updateTasksList(_tasksSearched)
+                } else {
+                    var auxText = ".{0,}"
+                    newText.forEach { letter ->
+                        auxText += "[$letter].{0,}"
+                    }
+                    val filterTasks = _tasksDB.filter {
+                        Regex(auxText, RegexOption.IGNORE_CASE)
+                            .containsMatchIn(it.taskDescription) ||
+                                Regex(auxText, RegexOption.IGNORE_CASE)
+                                    .containsMatchIn(it.taskDetails)
+                    }
+                    _tasksSearched.clear()
+                    _tasksSearched.addAll(filterTasks)
+                    taskAdapter.updateTasksList(_tasksSearched)
+                }
+                return true
+            }
+        })
     }
 
     private fun setupTasksRV() {
@@ -89,7 +196,11 @@ class MainActivity : AppCompatActivity() {
 
     private fun editTask(task: Task) {
         fun updateTask(taskDescription: String, taskDetails: String) {
-            val newTask = task.copy(taskDescription = taskDescription, taskDetails = taskDetails)
+            val newTask = task.copy(
+                taskDescription = taskDescription,
+                taskDetails = taskDetails,
+                lastEdit = Date().time
+            )
             updatedTaskInDB(newTask)
             refreshData()
         }
@@ -98,7 +209,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun changeColor(task: Task) {
-        val newTask = task.copy()
+        val newTask = task.copy(lastEdit = Date().time)
         val options = arrayOf("Indigo", "Blue", "Green", "Yellow", "Orange", "Red", "Transparent")
         MaterialAlertDialogBuilder(this)
             .setTitle("Select Color")
@@ -149,7 +260,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun invertDoneFlag(task: Task) {
         val oldValue = task.isDone
-        val newTask = task.copy(isDone = oldValue.not())
+        val newTask = task.copy(isDone = oldValue.not(), lastEdit = Date().time)
         updatedTaskInDB(newTask)
         refreshData()
     }
@@ -175,10 +286,20 @@ class MainActivity : AppCompatActivity() {
                     appColors.value == cursor.getInt(cursor.getColumnIndex(DbContract.Columns.TASK_COLOR))
                 }
             val taskIsDone = it.getInt(it.getColumnIndex(DbContract.Columns.TASK_DONE)) != 0
+            val taskCreated = it.getLong(it.getColumnIndex(DbContract.Columns.TASK_CREATED))
+            val taskLastEdit = it.getLong(it.getColumnIndex(DbContract.Columns.TASK_LAST_EDIT))
             val taskUuid =
                 UUID.fromString(it.getString(it.getColumnIndex(DbContract.Columns.TASK_UUID)))
 
-            return Task(taskDescription, taskDetails, taskColor, taskIsDone, taskUuid)
+            return Task(
+                taskDescription,
+                taskDetails,
+                taskColor,
+                taskIsDone,
+                taskLastEdit,
+                taskCreated,
+                taskUuid
+            )
 
         }
     }
@@ -189,6 +310,8 @@ class MainActivity : AppCompatActivity() {
             put(DbContract.Columns.TASK_DETAILS, task.taskDetails)
             put(DbContract.Columns.TASK_COLOR, task.color.value)
             put(DbContract.Columns.TASK_DONE, task.isDone)
+            put(DbContract.Columns.TASK_LAST_EDIT, task.lastEdit)
+            put(DbContract.Columns.TASK_CREATED, task.created)
             put(DbContract.Columns.TASK_UUID, task.uuid.toString())
         }
     }
@@ -199,6 +322,7 @@ class MainActivity : AppCompatActivity() {
     private fun refreshData() {
         val cursor = contentResolver.query(DbContract.CONTENT_URI, null, null, null, null)
         _tasksDB.clear()
+//        _tasksRV.clear()
         try {
             cursor?.let {
                 it.moveToFirst()

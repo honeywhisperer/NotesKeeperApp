@@ -4,4 +4,10 @@
     <string name="task">Task</string>
     <string name="task_description">Task Description</string>
     <string name="task_details">Task Details</string>
+    <string name="search">Search</string>
+    <string name="add_new_task">Add New Task</string>
+    <string name="set_all_as_done">Set All as Done</string>
+    <string name="set_all_as_undone">Set All as Undone</string>
+    <string name="remove_all">Remove All</string>
+    <string name="info">Info</string>
 </resources>

@@ -18,6 +18,8 @@ object DbContract {
         const val TASK_DETAILS = "TaskDetails"
         const val TASK_DONE = "IsDone"
         const val TASK_COLOR = "TaskColor"
+        const val TASK_CREATED = "TaskCreated"
+        const val TASK_LAST_EDIT = "TaskLastEdit"
         const val TASK_UUID = "TaskUuid"
     }
 

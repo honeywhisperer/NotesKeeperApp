@@ -2,6 +2,7 @@ package hr.trailovix.noteskeeper
 
 import android.content.res.ColorStateList
 import android.graphics.Paint
+import android.text.format.DateUtils
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -9,6 +10,7 @@ import androidx.core.graphics.alpha
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.RecyclerView
 import hr.trailovix.noteskeeper.databinding.ItemTaskBinding
+import java.util.*
 
 class TaskAdapter(private val listener: OnTaskItemInteraction) :
     RecyclerView.Adapter<TaskAdapter.TaskViewHolder>() {
@@ -23,6 +25,8 @@ class TaskAdapter(private val listener: OnTaskItemInteraction) :
         listRV.addAll(updatedList)
         diffResult.dispatchUpdatesTo(this)
     }
+
+    fun getVisibleElements(): List<Task> = listRV
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): TaskViewHolder {
         val binding = ItemTaskBinding.inflate(LayoutInflater.from(parent.context), parent, false)
@@ -73,6 +77,9 @@ class TaskAdapter(private val listener: OnTaskItemInteraction) :
             } else {
                 itemTaskBinding.tvTaskDetails.visibility = View.GONE
             }
+            val now = Date().time
+            itemTaskBinding.tvTimeCreated.text = "Created: ${DateUtils.getRelativeTimeSpanString(task.created, now, 1L)}"
+            itemTaskBinding.tvTimeEdited.text = "Last Change: ${DateUtils.getRelativeTimeSpanString(task.lastEdit, now, 1L)}"
         }
     }
 }

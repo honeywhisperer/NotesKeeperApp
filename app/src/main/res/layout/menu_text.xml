@@ -39,6 +39,8 @@
             <EditText
                 style="@style/TextDetailsTask"
                 android:layout_width="match_parent"
+                android:minLines="3"
+                android:maxLines="7"
                 android:layout_height="match_parent" />
 
         </com.google.android.material.textfield.TextInputLayout>

@@ -7,5 +7,7 @@ data class Task(
     var taskDetails: String = "",
     var color: Colors = Colors.TRANSPARENT,
     var isDone: Boolean = false,
+    var lastEdit: Long = Date().time,
+    val created: Long = Date().time,
     val uuid: UUID = UUID.randomUUID()
 )

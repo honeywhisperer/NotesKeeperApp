@@ -27,6 +27,8 @@ class TasksDatabase private constructor(context: Context) :
             ${DbContract.Columns.TASK_DETAILS} TEXT,
             ${DbContract.Columns.TASK_COLOR} INTEGER NOT NULL,
             ${DbContract.Columns.TASK_DONE} INTEGER NOT NULL,
+            ${DbContract.Columns.TASK_CREATED} LONG NOT NULL,
+            ${DbContract.Columns.TASK_LAST_EDIT} LONG NOT NULL,
             ${DbContract.Columns.TASK_UUID} TEXT NOT NULL);""".replaceIndent(" ")
         Log.d(TAG, "TasksDatabase: onCreate SQL Statement: $sqlStatement")
         db.execSQL(sqlStatement)
